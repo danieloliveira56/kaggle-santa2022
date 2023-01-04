@@ -1,0 +1,8 @@
+LKH
+p5.min.js
+*.txt
+*submission*.csv
+*.par
+*.vrp
+.ipynb_checkpoints
+.idea
