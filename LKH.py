@@ -4,16 +4,18 @@ import subprocess
 import datetime
 from numba import njit
 from rich.progress import track
+from rich.progress import Progress
 
 # def two_opt():
 
 
-def solve_lkh(config_pool):
+def solve_lkh(config_pool, trace_level=1, precision=3, edge_data="EDGE_LIST", time_limit=60):
 
     start = datetime.datetime.now()
 
     print("\nRunning solve_atsp:")
     print(f"\tconfig_pool size: {len(config_pool)}")
+    print(f"\tInitial cost: {evaluate_solution(config_pool)}")
 
     print("Writing LKH input files...")
 
@@ -26,17 +28,23 @@ def solve_lkh(config_pool):
         f.write("INITIAL_TOUR_FILE = initial.txt\n")
         f.write("\n")
 
-        # f.write("MOVE_TYPE = 5 SPECIAL\n")
-        # f.write("GAIN23 = NO\n")
-        # f.write("KICKS = 2\n")
-        # f.write("MAX_SWAPS = 0\n")
-        # f.write("POPULATION_SIZE = 100\n")
+        # f.write("RUNS = 0\n")
+        f.write("MOVE_TYPE = 5 SPECIAL\n")
+        # f.write("GAIN23 = YES\n")
+        f.write("KICKS = 1\n")
+        f.write("KICK_TYPE = 4\n")
+        f.write("POPULATION_SIZE = 100\n")
+        f.write("MAX_SWAPS = 0\n")
+        # f.write("MAX_TRIALS = 0\n")
 
-        f.write("RUNS = 1\n")
-        f.write(f"TIME_LIMIT = {5 * 60 * 60}\n")  # seconds
-        f.write("TRACE_LEVEL = 1\n")  # seconds
+        # f.write(f"BACKTRACKING = YES\n")
+        # f.write(f"MOVE_TYPE = 2\n")
+        # f.write(f"POPULATION_SIZE = 10\n")
+        f.write(f"TIME_LIMIT = {time_limit}\n")  # seconds
+        # f.write(f"POPMUSIC_INITIAL_TOUR = YES\n")  # seconds
+        # f.write(f"INITIAL_PERIOD = 100\n")  # seconds
+        f.write(f"TRACE_LEVEL = {trace_level}\n")  # seconds
         # f.write("MAX_TRIALS = 10000\n")  # seconds
-        f.write("RUNS = 10\n")  # seconds
 
     print("Creating cost_map")
     pool_cost_map = cost_map(config_pool)
@@ -44,30 +52,42 @@ def solve_lkh(config_pool):
     # WRITE PARAMETER FILE
     with open(f'distances.vrp', 'w') as f:
         f.write("NAME: distances\n")
-        f.write("TYPE: ATSP\n")
-        f.write(f"DIMENSION: {SIZE}\n")
+        f.write("TYPE: TSP\n")
+        f.write(f"DIMENSION: {SIZE+1}\n")
         f.write("EDGE_WEIGHT_TYPE: EXPLICIT\n")
-        f.write("EDGE_WEIGHT_FORMAT: UPPER_ROW\n")
-        f.write("EDGE_WEIGHT_SECTION\n")
-        for i in track(range(SIZE), description="Writing distances.vrp..."):
-            hash_i = np.array2string(config_pool[i])
-            i_cost_map = pool_cost_map[hash_i]
-            for j in range(i+1, SIZE):
-                hash_j = np.array2string(config_pool[j])
-                f.write(f"{int(1000 * i_cost_map.get(hash_j, 1000)): d}")
+        f.write("EDGE_WEIGHT_FORMAT: FULL_MATRIX\n")
 
-            # array_str = np.array2string(1_000 * reference_config_cost(config_pool[i], config_pool[i+1:]), precision=0, max_line_width=SIZE*20, threshold=SIZE*2)
-            # f.write(array_str[1:-1])
-            f.write("\n")
+        if edge_data == "MATRIX":
+            f.write("EDGE_WEIGHT_FORMAT: FULL_MATRIX\n")
+            f.write("EDGE_WEIGHT_SECTION\n")
 
+            cost_matrix = 100 * np.ones(shape=(SIZE, SIZE))
+            for i in track(range(SIZE)):
+                for j, ij_cost in pool_cost_map[i].items():
+                    # if j <= i:
+                    #     continue
+                    cost_matrix[i][j] = ij_cost
+                    cost_matrix[j][i] = ij_cost
+            np.savetxt(f, cost_matrix, fmt=f"%.{precision}f")
+        elif edge_data == "EDGE_LIST":
+            f.write("EDGE_DATA_FORMAT: EDGE_LIST\n")
+            f.write("EDGE_DATA_SECTION\n")
+            f.write(f"1 2 0\n")
+            f.write(f"1 {SIZE+1} 0\n")
+            for i in track(range(SIZE)):
+                # f.write(f"{i + 2} 1 0\n")
+                for j, ij_cost in pool_cost_map[i].items():
+                    if i >= j:
+                        continue
+                    f.write(f"{i+2} {j+2} {pow(10, precision) * ij_cost:.0f}\n")
         f.write("EOF\n")
 
     with open(f'initial.txt', 'w') as f:
         f.write("NAME: initial\n")
         f.write("TYPE: TOUR\n")
-        f.write(f"DIMENSION: {SIZE}\n")
+        f.write(f"DIMENSION: {SIZE+1}\n")
         f.write("TOUR_SECTION\n")
-        for j in range(SIZE):
+        for j in range(SIZE+1):
             f.write(f"{j+1}\n")
 
         f.write("-1\n")
@@ -75,14 +95,17 @@ def solve_lkh(config_pool):
 
     print("Finished writing LKH input files,", datetime.datetime.now() - start)
 
-    # EXECUTE TSP SOLVER\
+    # EXECUTE TSP SOLVER
     print("Running LKH")
-    subprocess.run(
-        [
-            './LKH',
-            'group.par',
-        ],
-    )
+    try:
+        subprocess.run(
+            [
+                './LKH',
+                'group.par',
+            ],
+        )
+    except KeyboardInterrupt:
+        print('KeyboardInterrupt')
 
     tour = []
     # READ RESULTING ORDER
@@ -92,11 +115,11 @@ def solve_lkh(config_pool):
             line = f.readline().replace('\n', '')
         line = f.readline().replace('\n', '')
         while line != "-1":
-            tour.append(int(line))
+            if line != "1":
+                tour.append(int(line)-1)
             line = f.readline().replace('\n', '')
 
     print(tour)
     solution = [config_pool[i-1] for i in tour]
-    solution.append(solution[0])
 
     return np.array(solution)

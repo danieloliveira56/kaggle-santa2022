@@ -92,7 +92,7 @@ def evaluate_relative_cost(config_array1, config_array2):
 
 
 def is_valid(i, j):
-    return np.abs(i - j).max(axis=-1).sum(axis=-1) <= 1
+    return np.abs(i - j).sum(axis=-1).max() <= 1
 
 
 def config_to_string(config):
@@ -104,7 +104,7 @@ def solution_to_submission(solution, save_as='submission'):
     [config_to_string(config) for config in solution],
     name="configuration",
     )
-    submission.to_csv(f"{save_as}-{datetime.datetime.now():%h%d-%H%M}.csv", index=False)
+    submission.to_csv(f"{save_as}-{evaluate_solution(solution):.0f}-{datetime.datetime.now():%h%d-%H%M}.csv", index=False)
 
 
 def config_to_string(config):
@@ -119,28 +119,25 @@ def load_submission(csv_filename):
     return submission
 
 
-def solution_to_xy_config_dict(solution):
+def solution_to_xy_config_dict(config_pool):
     xy_config_dict = {
-        (i, j): []
-        for i in range(-128, 129)
-        for j in range(-128, 129)
+        (x, y): set()
+        for x in range(-128, 129)
+        for y in range(-128, 129)
     }
-    for i, config in enumerate(solution):
-        xy_config_dict[tuple(sum(config))].append((i, config))
+    for i, config in track(enumerate(config_pool), description="Creating xy_config dict"):
+        xy_config_dict[tuple(sum(config))].add(i)
     return xy_config_dict
 
 
 def adjacency_dict(config_pool):
     xy_config_dict = solution_to_xy_config_dict(config_pool)
-    print("xy_config_dict created")
     N = {
-        np.array2string(i): np.empty((0, 8, 2), dtype=int)
-        for i in config_pool
+        i: set()
+        for i in range(config_pool.shape[0])
     }
-    print("empty N created")
-
-    for i in track(config_pool, description="Creating adjacency_dict"):
-        xi,yi = i.sum(axis=0)
+    for i, ci in track(enumerate(config_pool), description="Populating adjacency dict"):
+        xi, yi = ci.sum(axis=0)
         for delta_x in range(-8, 9):
             for delta_y in range(-8+abs(delta_x), 9-abs(delta_x)):
                 xj = xi+delta_x
@@ -149,26 +146,26 @@ def adjacency_dict(config_pool):
                 yj = yi+delta_y
                 if yj < -128 or yj > 128:
                     continue
-                for _, j in xy_config_dict[(xj, yj)]:
-                    if not is_valid(i, j):
+                for j in xy_config_dict[(xj, yj)]:
+                    if not is_valid(config_pool[i], config_pool[j]):
                         continue
-                    N[np.array2string(i)] = np.unique(np.vstack([N[np.array2string(i)], j.reshape(1, 8, 2)]), axis=0)
-                    N[np.array2string(j)] = np.unique(np.vstack([N[np.array2string(j)], i.reshape(1, 8, 2)]), axis=0)
+                    N[i].add(j)
+                    N[j].add(i)
     return N
 
 
 def cost_map(config_pool):
     N = adjacency_dict(config_pool)
-
     return {
-        np.array2string(i): {
-            np.array2string(j): cost
-            for j, cost in zip(N[np.array2string(i)], reference_config_cost(i, N[np.array2string(i)]))
+        i: {
+            j: cost(ci, config_pool[j])
+            for j in N[i]
         }
-        for i in config_pool
+        for i, ci in enumerate(config_pool)
     }
 
 
+# Deprecated
 def get_neighbors(config):
     valid_configs = [
         [config[pos]]
