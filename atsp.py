@@ -1,18 +1,26 @@
-from itertools import combinations
-import gurobipy as gp
-from gurobipy import GRB, tuplelist
-import numpy as np
 import itertools
-from common import is_valid, cost
+from itertools import combinations
 
-def solve_atsp(config_pool, initial_solution=None, UB=None,
-               linear_relaxation=False, save_model=False, arc_limit=6,
-               min_max_obj=True, dfj_model=True, mtz_model=False):
+import gurobipy as gp
+import numpy as np
+from gurobipy import GRB, tuplelist
 
-    pts = np.unique(
-        [np.sum(config, axis=0) for config in config_pool],
-        axis=0
-    )
+from common import cost, is_valid
+
+
+def solve_atsp(
+    config_pool,
+    initial_solution=None,
+    UB=None,
+    linear_relaxation=False,
+    save_model=False,
+    arc_limit=6,
+    min_max_obj=True,
+    dfj_model=True,
+    mtz_model=False,
+):
+
+    pts = np.unique([np.sum(config, axis=0) for config in config_pool], axis=0)
     print(pts)
     print("\nRunning solve_atsp:")
     print(f"\tconfig_pool size: {len(config_pool)}")
@@ -38,42 +46,44 @@ def solve_atsp(config_pool, initial_solution=None, UB=None,
     # Create x variables
     print(f"\nCreating {len(arcs)} x arc variables...")
 
-    x = m.addVars(
-        arcs,
-        vtype=var_type,
-        lb=0,
-        ub=1,
-        name="x"
-    )
+    x = m.addVars(arcs, vtype=var_type, lb=0, ub=1, name="x")
     if mtz_model:
-        u = m.addVars(config_pool,
-                      lb=0,
-                      vtype=GRB.INTEGER,
-                      name="u")
+        u = m.addVars(config_pool, lb=0, vtype=GRB.INTEGER, name="u")
         if UB:
             Q = UB
         else:
             Q = 2429
 
-    for i,j in arcs:
-        print(i,j)
+    for i, j in arcs:
+        print(i, j)
 
     print("Setting obj\n")
     m.setObjective(
-        sum(x[i, j] * cost(config_pool[i], config_pool[j])
-                    for (i, j) in arcs),
-        GRB.MINIMIZE
+        sum(x[i, j] * cost(config_pool[i], config_pool[j]) for (i, j) in arcs),
+        GRB.MINIMIZE,
     )
 
     m.addConstrs(
-        ((gp.quicksum(x.sum("*", i) for i in range(len(config_pool)) if tuple(np.sum(config_pool[i], axis=0)) == (pt_x, pt_y)) >= 1)
-         for (pt_x, pt_y) in pts),
-        "ConfigTo")
+        (
+            (
+                gp.quicksum(
+                    x.sum("*", i)
+                    for i in range(len(config_pool))
+                    if tuple(np.sum(config_pool[i], axis=0)) == (pt_x, pt_y)
+                )
+                >= 1
+            )
+            for (pt_x, pt_y) in pts
+        ),
+        "ConfigTo",
+    )
 
     print(f"Creating FlowConservation constraints...")
-    m.addConstrs(((x.sum("*", j) == x.sum(j, "*"))
-                  for j in range(len(config_pool))), "FlowConservation")
-    
+    m.addConstrs(
+        ((x.sum("*", j) == x.sum(j, "*")) for j in range(len(config_pool))),
+        "FlowConservation",
+    )
+
     # m.computeIIS()
     if save_model:
         print("Saving model...")
@@ -95,11 +105,10 @@ def solve_atsp(config_pool, initial_solution=None, UB=None,
                 current = neighbors[0]
                 thiscycle.append(current)
                 unvisited.remove(current)
-                neighbors = [j for i, j in edges.select(current, '*')
-                             if j in unvisited]
+                neighbors = [j for i, j in edges.select(current, "*") if j in unvisited]
             if len(thiscycle) <= len(cycle):
                 is_subtour = True
-                cycle = thiscycle # New shortest subtour
+                cycle = thiscycle  # New shortest subtour
                 return cycle, is_subtour
             else:
                 cycle = thiscycle
@@ -109,7 +118,7 @@ def solve_atsp(config_pool, initial_solution=None, UB=None,
         if where == GRB.Callback.MIPSOL:
             if mtz_model:
                 return
-            print(f'\nCurrent Best Solution ({model.cbGet(GRB.Callback.MIPSOL_OBJ)}):')
+            print(f"\nCurrent Best Solution ({model.cbGet(GRB.Callback.MIPSOL_OBJ)}):")
             x_sol = model.cbGetSolution(model._x)
 
             # for key, val in x_sol.items():
@@ -118,8 +127,7 @@ def solve_atsp(config_pool, initial_solution=None, UB=None,
 
             iteration_seen_tours = set()
 
-            selected = gp.tuplelist(a for a in arcs
-                                    if x_sol[a] > 0.5)
+            selected = gp.tuplelist(a for a in arcs if x_sol[a] > 0.5)
             # print(selected)
             tour_configs = [i for i, _ in selected]
             tour, is_subtour = subtour(selected, tour_configs)
@@ -130,11 +138,23 @@ def solve_atsp(config_pool, initial_solution=None, UB=None,
                 while tour:
                     # add subtour elimination constr. for every pair of cities in subtour
                     if tuple(sorted(tour)) not in iteration_seen_tours:
-                        model.cbLazy(gp.quicksum(model._x[i, j]+model._x[j, i] for i, j in combinations(tour, 2) if (i,j) in arcs)
-                                     <= len(tour)-1)
+                        model.cbLazy(
+                            gp.quicksum(
+                                model._x[i, j] + model._x[j, i]
+                                for i, j in combinations(tour, 2)
+                                if (i, j) in arcs
+                            )
+                            <= len(tour) - 1
+                        )
 
-                        model.cbLazy(gp.quicksum(model._x[i, j]+model._x[j, i] for i, j in combinations(tour, 2) if (i,j) in arcs)
-                                     <= len(tour))
+                        model.cbLazy(
+                            gp.quicksum(
+                                model._x[i, j] + model._x[j, i]
+                                for i, j in combinations(tour, 2)
+                                if (i, j) in arcs
+                            )
+                            <= len(tour)
+                        )
 
                     # print(sum(x_sol[ci, cj] for ci, cj in combinations(tour, 2)))
                     # print(gp.quicksum(model._x[ci, cj] for ci, cj in combinations(tour+[str(k)], 2))
@@ -158,12 +178,12 @@ def solve_atsp(config_pool, initial_solution=None, UB=None,
             else:
                 print(f"tour: {tour}")
 
-            model._seen_tours =model._seen_tours.union(iteration_seen_tours)
+            model._seen_tours = model._seen_tours.union(iteration_seen_tours)
 
         elif where == GRB.Callback.MIPNODE:
             return
             # MIP node callback
-            print('**** New node ****')
+            print("**** New node ****")
             if model.cbGet(GRB.Callback.MIPNODE_STATUS) == GRB.OPTIMAL:
                 for key, val in model.cbGetNodeRel(model._x).items():
                     if val > 1e-8:
@@ -193,7 +213,6 @@ def solve_atsp(config_pool, initial_solution=None, UB=None,
     #     # Write tuned parameters to a file
     #     m.write('tune.prm')
 
-
     print("Optimizing...")
     m.optimize(mycallback)
 
@@ -203,8 +222,7 @@ def solve_atsp(config_pool, initial_solution=None, UB=None,
 
     print(f"Objective: {m.objVal:.2f}")
     tours = []
-    selected = gp.tuplelist(a for a in arcs
-                            if x[a].x > 0.5)
+    selected = gp.tuplelist(a for a in arcs if x[a].x > 0.5)
     for a in arcs:
         if x[a].x > 0.5:
             print(f"x{a}={x[a].x}")

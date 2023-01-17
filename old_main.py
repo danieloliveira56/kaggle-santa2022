@@ -1,16 +1,17 @@
 import csv
+from functools import reduce
 from math import sqrt
 
 import numpy as np
-from functools import reduce
 import pandas as pd
 from matplotlib import pyplot as plt
 
+
 def solve():
-    df_image = pd.read_csv('image.csv')
+    df_image = pd.read_csv("image.csv")
     image = df_to_image(df_image)
 
-    plt.imshow(image, interpolation='nearest')
+    plt.imshow(image, interpolation="nearest")
     plt.show()
 
     submission = []
@@ -29,6 +30,7 @@ def solve():
     # print(image)
     score = evaluate(image, submission)
     print(score)
+
 
 def cartesian_to_array(x, y, shape):
     m, n = shape[:2]
@@ -65,18 +67,17 @@ def image_to_dict(image):
 def image_to_df(image):
     return pd.DataFrame(
         [(x, y, r, g, b) for (x, y), (r, g, b) in image_to_dict(image).items()],
-        columns=['x', 'y', 'r', 'g', 'b']
+        columns=["x", "y", "r", "g", "b"],
     )
 
 
 def df_to_image(df_image):
     side = int(len(df_image) ** 0.5)  # assumes a square image
-    return df_image.set_index(['x', 'y']).to_numpy().reshape(side, side, -1)
+    return df_image.set_index(["x", "y"]).to_numpy().reshape(side, side, -1)
 
 
 # Cost of reconfiguring the robotic arm: the square root of the number of links rotated
 def reconfiguration_cost(from_config, to_config):
-    nlinks = len(from_config)
     diffs = np.abs(np.asarray(from_config) - np.asarray(to_config)).sum(axis=1)
     return np.sqrt(diffs.sum())
 
@@ -94,10 +95,10 @@ def get_position(config):
 def step_cost(from_config, to_config, image):
     from_position = cartesian_to_array(*get_position(from_config), image.shape)
     to_position = cartesian_to_array(*get_position(to_config), image.shape)
-    return (
-        reconfiguration_cost(from_config, to_config) +
-        color_cost(from_position, to_position, image)
+    return reconfiguration_cost(from_config, to_config) + color_cost(
+        from_position, to_position, image
     )
+
 
 def evaluate(image, submission):
     previous_position = submission[0]
@@ -107,11 +108,7 @@ def evaluate(image, submission):
         cost += step_cost(previous_position, position, image)
         previous_position = position
 
-    pts = [
-        (x, y)
-        for x in range(-127, 128)
-        for y in range(-127, 128)
-    ]
+    pts = [(x, y) for x in range(-127, 128) for y in range(-127, 128)]
     shape = (257, 257, 3)
 
     dist_matrix = [
@@ -119,18 +116,20 @@ def evaluate(image, submission):
             step_cost(
                 cartesian_to_array(x1, y1, shape),
                 cartesian_to_array(x2, y2, shape),
-                image
+                image,
             )
-            for (x1, y1) in pts]
+            for (x1, y1) in pts
+        ]
         for (x2, y2) in pts
     ]
 
-    with open("dist_matrix.txt", 'w') as f:
+    with open("dist_matrix.txt", "w") as f:
         for i, row in enumerate(dist_matrix):
             for j, col in enumerate(row):
                 f.write(f"{i} {j} {col}\n")
 
     print(cost)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     solve()
