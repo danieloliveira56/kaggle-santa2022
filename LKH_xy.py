@@ -84,7 +84,7 @@ def solve_lkh_xy(pts, max_dist=2, precision=3, n=128):
                     if i == 0:
                         f.write(f"{SIZE+1} {j + 2} {pow(10, precision) * cost_xy(xi, yi, xj, yj):.0f}\n")
 
-                    if i > n / 2 or j == i + 1:
+                    if i > 2 * n or j == i + 1:
                         f.write(f"{i+2} {j+2} {pow(10, precision) * cost_xy(xi, yi, xj, yj):.0f}\n")
 
         f.write("EOF\n")

@@ -747,58 +747,28 @@ def xy_path(grid_size: int = 128):
 
     x = 0
     y = 0
-    while y < grid_size / 2:
+    while y < grid_size:
         y += 1
         path.append((x, y))
 
     # pt1
     assert x == 0
-    assert y == grid_size / 2
+    assert y == grid_size
     print(f"Successfully reached pt1: ({x}, {y})\n{path}")
 
-    while x < grid_size / 2:
+    while x < grid_size:
         x += 1
         path.append((x, y))
 
     # pt2
-    assert x == grid_size / 2
-    assert y == grid_size / 2
+    assert x == grid_size
+    assert y == grid_size
     print(f"Successfully reached pt2: ({x}, {y})\n{path}")
 
     x_direction = -1
-    y_direction = 1
-    while y < grid_size:
-        y += y_direction
-        while 0 <= x <= grid_size / 2:
-            path.append((x, y))
-            x += x_direction
-        x -= x_direction
-        x_direction = -x_direction
-
-    # pt3
-    assert x == grid_size // 2 and y == grid_size, f"Expected ({grid_size // 2}, {grid_size}), got ({x}, {y})\n{path}"
-    print(f"Successfully reached pt3: ({x}, {y})\n{path}")
-
-    x_direction = 1
     y_direction = -1
-    x += 1
-    y += 1
-    while y > grid_size // 2:
-        y += y_direction
-        while grid_size // 2 + 1 <= x <= grid_size:
-            path.append((x, y))
-            x += x_direction
-        # Correct overshoot
-        x -= x_direction
-        # Change directions
-        x_direction = -x_direction
-
-    # pt4
-    assert x == grid_size and y == grid_size / 2, f"Expected pt4:({grid_size}, {grid_size // 2}), got ({x}, {y})\n{path}"
-    print(f"Successfully reached pt4: ({x}, {y})\n{path}")
-
-    while y > 0:
-        y += y_direction
+    y += y_direction
+    while y >= 0:
         while 1 <= x <= grid_size:
             path.append((x, y))
             x += x_direction
@@ -806,14 +776,14 @@ def xy_path(grid_size: int = 128):
         x -= x_direction
         # Change directions
         x_direction = -x_direction
+        y += y_direction
 
-    # pt5
-    assert x == grid_size and y == 0, f"Expected pt5:({grid_size}, {0}), got ({x}, {y})\n{path}"
+    # pt3
+    assert x == grid_size and y == -1, f"Expected pt3:({grid_size}, {0}), got ({x}, {y})\n{path}"
     print(f"Successfully reached pt5: ({x}, {y})\n{path}")
 
     x_direction = -1
     y_direction = -1
-    y += y_direction
     while x >= 0:
         while -grid_size <= y <= -1:
             path.append((x, y))

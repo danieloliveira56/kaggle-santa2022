@@ -621,12 +621,12 @@ if __name__ == "__main__":
     links = 8
     max_mip_pts = 50
     n = [1, 2, 4, 8, 16, 32, 64, 128][links-1]
-    solution = load_submission("submission-2599-101-(0, 65948)-Jan17-0030.csv")
+    # solution = load_submission("submission-2599-101-(0, 65948)-Jan17-0030.csv")
     # solution = np.empty(shape=(0, links, 2), dtype=int)
-    # solution = np.array([INITIAL_CONFIG], dtype=int)
+    solution = np.array([INITIAL_CONFIG], dtype=int)
 
     solution_xy = xy_path(n)
-    solution_xy = solve_lkh_xy(solution_xy, n=n)
+    solution_xy = solve_lkh_xy(solution_xy, n=n, max_dist=4)
     for i, xy in enumerate(solution_xy):
         print(f"{i}: {xy}")
 
@@ -651,15 +651,12 @@ if __name__ == "__main__":
                 save_model=False,
                 links=links,
                 start_config=solution[-1],
-                end_config=INITIAL_CONFIG if (j == len(solution_pieces) - 1) else None,
+                end_config=INITIAL_CONFIG if (j == len(solution_pieces) - 1) and solution_pieces[j][-1] == (0, 0) else None,
             )
-
-        if j > 0:
-            piece_solution = piece_solution[1:]
 
         solution = np.concatenate([
             solution,
-            piece_solution,
+            piece_solution[1:],
         ])
         print(f"Current solution size: {solution.shape}")
         solution_to_submission(solution)
