@@ -6,12 +6,10 @@ from rich.progress import track
 from common import cost_xy, xy_path
 
 
-def solve_lkh_xy(max_dist=2, precision=3):
+def solve_lkh_xy(pts, max_dist=2, precision=3, n=128):
 
     start = datetime.datetime.now()
 
-    pts = xy_path(128)
-    print(len(pts))
     pt_map = {
         xy: i
         for i, xy in enumerate(pts[:-1])
@@ -73,10 +71,10 @@ def solve_lkh_xy(max_dist=2, precision=3):
             for delta_x in range(-max_dist, max_dist+1):
                 for delta_y in range(-max_dist + abs(delta_x), max_dist + 1 - abs(delta_x)):
                     xj = xi + delta_x
-                    if xj < -128 or xj > 128:
+                    if xj < -n or xj > n:
                         continue
                     yj = yi + delta_y
-                    if yj < -128 or yj > 128:
+                    if yj < -n or yj > n:
                         continue
                     i = pt_map[(xi, yi)]
                     j = pt_map[(xj, yj)]
@@ -87,16 +85,7 @@ def solve_lkh_xy(max_dist=2, precision=3):
                     if i == 0:
                         f.write(f"{SIZE+1} {j + 2} {pow(10, precision) * cost_xy(xi, yi, xj, yj):.0f}\n")
 
-        # for i in track(range(SIZE)):
-        #     for j in range(SIZE):
-        #         if i == j:
-        #             continue
-        #         x1, y1 = pts[i]
-        #         x2, y2 = pts[j]
-        #         if abs(x1-x2) + abs(y1-y2) > 4:
-        #             continue
-        #
-        #         f.write(f"{i+2} {j+2} {pow(10, 3) * cost_xy(x1, y1, x2, y2):.0f}\n")
+
         f.write("EOF\n")
 
     print("Finished writing LKH input files,", datetime.datetime.now() - start)
@@ -115,8 +104,8 @@ def solve_lkh_xy(max_dist=2, precision=3):
         print("KeyboardInterrupt")
 
     tour = []
-    # READ RESULTING ORDER
-    with open("output.txt") as f:
+
+    with open("output.txt", 'r') as f:
         line = ""
         while line != "TOUR_SECTION":
             line = f.readline().replace("\n", "")
@@ -138,3 +127,5 @@ def solve_lkh_xy(max_dist=2, precision=3):
         f.write("x,y")
         for x, y in solution:
             f.write(f"{x},{y}")
+
+    return solution

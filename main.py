@@ -617,23 +617,14 @@ def unit_tests():
     assert is_valid(config1, config2)
 
 
-# def delete_and_patch(solution, window_size=5000):
-#     for start_idx in range(solution.shape[0], window_size):
-#         end_idx = min(start_idx+window_size, solution.shape)
-#         pts_seen = {}
-#         pts_map = {}
-#         repeated = set()
-#         for i, config in enumerate(solution[start_idx:end_idx]):
-#             config_xy = tuple(np.sum(config, axis=0))
-#             pts_seen[config_xy] = pts_seen.get(config_xy, 0) + 1
-#             pts_map[config_xy] = pts_map.get(config_xy, []).append(i)
-
-
 if __name__ == "__main__":
-    links = 3
+    links = 8
     n = [1, 2, 4, 8, 16, 32, 64, 128][links-1]
 
     solution_xy = xy_path(n)
+    solution_xy = solve_lkh_xy(solution_xy, n=n)
+    for i, xy in enumerate(solution_xy):
+        print(f"{i}: {xy}")
 
     solution_pieces = []
     start = 0
@@ -645,20 +636,28 @@ if __name__ == "__main__":
         start = i
     solution_pieces.append(solution_xy[start:])
 
-    solution = np.empty(shape=(0, links, 2))
-    for j in [0,2,3]:
-        print(f"solution_piece[{j}]: {solution_pieces[j]}")
 
-        solution = np.concatenate([
-            solution,
-            config_mip(
+    solution = np.empty(shape=(0, links, 2), dtype=int)
+    for j, _ in enumerate(solution_pieces):
+        print(f"MIP Solving solution piece {j+1} of {len(solution_pieces)}")
+        print(f"{solution_pieces[j]}")
+
+        piece_solution = config_mip(
                 solution_pieces[j],
                 links=links,
                 start=(j == 0),
-                end=(j == 3),
+                end=(j == len(solution_pieces)-1),
             )
+
+        if j > 0:
+            piece_solution = piece_solution[1:]
+
+        solution = np.concatenate([
+            solution,
+            piece_solution,
         ])
 
+    print(solution)
     solution_to_submission(solution)
 
     exit()

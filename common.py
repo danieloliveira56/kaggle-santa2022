@@ -117,7 +117,7 @@ def evaluate_relative_cost(config_array1, config_array2):
 
 
 def is_valid(i, j):
-    return np.abs(i - j).sum(axis=-1).max() == 1
+    return np.abs(i - j).max(axis=-1).max() == 1
 
 
 def valid_config(i):
@@ -190,7 +190,10 @@ def validate_solution(solution):
                 .replace("\n", ";")
                 .replace("[[", "[")
                 .replace("]]", "]"),
-                config1.sum(axis=0),
+                np.array2string(config1.sum(axis=0))
+                .replace("\n", ";")
+                .replace("[[", "[")
+                .replace("]]", "]"),
             )
             print("->")
             print(
@@ -198,7 +201,10 @@ def validate_solution(solution):
                 .replace("\n", ";")
                 .replace("[[", "[")
                 .replace("]]", "]"),
-                config2.sum(axis=0),
+                np.array2string(config2.sum(axis=0))
+                .replace("\n", ";")
+                .replace("[[", "[")
+                .replace("]]", "]"),
             )
             print(
                 np.array2string(config2 - config1)

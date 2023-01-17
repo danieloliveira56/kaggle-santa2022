@@ -17,47 +17,23 @@ def config_mip(
     print("\nRunning MIP to find configs:")
     print(f"\txy_solution size: {len(xy_solution)}")
 
+    print(f"links={links}")
+    print(f"UB={UB}")
+    print(f"linear_relaxation={linear_relaxation}")
+    print(f"save_model={save_model}")
+    print(f"start={start}")
+    print(f"end={end}")
+
     print("Creating model...")
     m = gp.Model("configs")
 
-    # Set variable type
-    var_type = GRB.INTEGER
-    if linear_relaxation:
-        var_type = GRB.SEMICONT
-
-    pts = tuplelist(
-        range(len(xy_solution))
+    arcs = tuplelist(
+        range(len(xy_solution)-1)
     )
+
     config_arcs = tuplelist(
-        (j, x1, y1, x2, y2)
-        for j in range(links)
-        for x1 in range(-ARM_LENGTHS[j], ARM_LENGTHS[j] + 1)
-        for y1 in range(-ARM_LENGTHS[j], ARM_LENGTHS[j] + 1)
-        if max(abs(x1), abs(y1)) == ARM_LENGTHS[j]
-        for x2 in range(-ARM_LENGTHS[j], ARM_LENGTHS[j] + 1)
-        for y2 in range(-ARM_LENGTHS[j], ARM_LENGTHS[j] + 1)
-        if max(abs(x2), abs(y2)) == ARM_LENGTHS[j] and abs(x2 - x1) <= 1 and abs(y2 - y1) <= 1
-    )
-
-    # arcs = tuplelist(
-    #     (i, link_length, x1, y1, x2, y2)
-    #     for i in range(len(xy_solution))
-    #     for x1 in range(-link_length, link_length+1)
-    #     for y1 in range(-link_length, link_length+1)
-    #     if max(abs(x1), abs(y1)) == link_length
-    #     for x2 in range(-link_length, link_length+1)
-    #     for y2 in range(-link_length, link_length+1)
-    #     if max(abs(x2), abs(y2)) == link_length and abs(x2-x1) <= 1 and abs(y2-y1) <= 1
-    #     for link_length in [1, 1, 2, 4, 8, 16, 32, 64]
-    # )
-    arcs = tuplelist(
-        (i, config_arc)
-        for i in pts
-        for config_arc in config_arcs
-    )
-    arcs = tuplelist(
         (i, j, x1, y1, x2, y2)
-        for i in pts
+        for i in arcs
         for j in range(links)
         for x1 in range(-ARM_LENGTHS[j], ARM_LENGTHS[j] + 1)
         for y1 in range(-ARM_LENGTHS[j], ARM_LENGTHS[j] + 1)
@@ -66,17 +42,12 @@ def config_mip(
         for y2 in range(-ARM_LENGTHS[j], ARM_LENGTHS[j] + 1)
         if max(abs(x2), abs(y2)) == ARM_LENGTHS[j] and abs(x2 - x1) <= 1 and abs(y2 - y1) <= 1
     )
-
-    arc_costs = tuplelist(
-        i for i in range(len(xy_solution))
-    )
-    print(pts)
 
     # Create x variables
-    print(f"\nCreating {len(arcs)} x arc variables...")
+    print(f"\nCreating {len(config_arcs)} x arc variables...")
 
-    x = m.addVars(arcs, vtype=var_type, lb=0, ub=1, name="x")
-    z = m.addVars(arc_costs, vtype=GRB.SEMICONT, name="z")
+    x = m.addVars(config_arcs, vtype=GRB.BINARY, lb=0, ub=1, name="x")
+    z = m.addVars(arcs, vtype=GRB.SEMICONT, name="z")
 
     print("Setting obj\n")
     m.setObjective(
@@ -94,7 +65,7 @@ def config_mip(
                 )
                 == xy_solution[i][0]
             )
-            for i in pts[:-1]
+            for i in arcs
         ),
         "ConfigFrom_x",
     )
@@ -109,7 +80,7 @@ def config_mip(
                 )
                 == xy_solution[i][1]
             )
-            for i in pts[:-1]
+            for i in arcs
         ),
         "ConfigFrom_y",
     )
@@ -118,13 +89,13 @@ def config_mip(
         (
             (
                 gp.quicksum(
-                    x2 * x.sum(i-1, j, "*", "*", x2, "*")
+                    x2 * x.sum(i, j, "*", "*", x2, "*")
                     for j in range(links)
                     for x2 in range(-ARM_LENGTHS[j], ARM_LENGTHS[j]+1)
                 )
-                == xy_solution[i][0]
+                == xy_solution[i+1][0]
             )
-            for i in pts[1:]
+            for i in arcs
         ),
         "ConfigTo_x",
     )
@@ -133,13 +104,13 @@ def config_mip(
         (
             (
                 gp.quicksum(
-                    y2 * x.sum(i-1, j, "*", "*", "*", y2)
+                    y2 * x.sum(i, j, "*", "*", "*", y2)
                     for j in range(links)
                     for y2 in range(-ARM_LENGTHS[j], ARM_LENGTHS[j]+1)
                 )
-                == xy_solution[i][1]
+                == xy_solution[i+1][1]
             )
-            for i in pts[1:]
+            for i in arcs
         ),
         "ConfigTo_y",
     )
@@ -147,7 +118,7 @@ def config_mip(
     m.addConstrs(
         (
             x.sum(i, j, "*", "*", "*", "*") == 1
-            for i in pts
+            for i in arcs
             for j in range(links)
         ),
         "SingleConfig",
@@ -156,7 +127,7 @@ def config_mip(
     m.addConstrs(
         (
             x.sum(i, j, "*", "*", x1, y1) == x.sum(i+1, j, x1, y1, "*", "*")
-            for i in pts[:-1]
+            for i in arcs[:-1]
             for j in range(links)
             for x1 in range(-ARM_LENGTHS[j], ARM_LENGTHS[j]+1)
             for y1 in range(-ARM_LENGTHS[j], ARM_LENGTHS[j]+1)
@@ -167,16 +138,15 @@ def config_mip(
     if start:
         m.addConstrs(
             (
-                x.sum(pts[0], j, ARM_LENGTHS[j] if j == links - 1 else -ARM_LENGTHS[j], 0, "*", "*") == 1
+                x.sum(arcs[0], j, ARM_LENGTHS[j] if j == links - 1 else -ARM_LENGTHS[j], 0, "*", "*") == 1
                 for j in range(links)
             ),
             "Start0",
         )
-
     if end:
         m.addConstrs(
             (
-                x.sum(pts[-1], j, "*", "*", ARM_LENGTHS[j] if j == links - 1 else -ARM_LENGTHS[j], 0) == 1
+                x.sum(arcs[-1], j, "*", "*", ARM_LENGTHS[j] if j == links - 1 else -ARM_LENGTHS[j], 0) == 1
                 for j in range(links)
             ),
             "End0",
@@ -194,7 +164,7 @@ def config_mip(
                 )
                 <= z[i]
             )
-            for i in pts
+            for i in arcs
         ),
         "Costx",
     )
@@ -211,12 +181,11 @@ def config_mip(
                 )
                 <= z[i]
             )
-            for i in pts
+            for i in arcs
         ),
         "Costy",
     )
 
-    # m.computeIIS()
     if save_model:
         print("Saving model...")
         m.write("santa_configs.lp")
@@ -248,21 +217,24 @@ def config_mip(
 
     print(m.Status)
     if m.Status == GRB.INFEASIBLE or m.Status == GRB.CUTOFF:
+        m.computeIIS()
+        m.write("model.ilp")
+
         return None
 
     print(f"Objective: {m.objVal:.2f}")
 
-    solution = np.empty(shape=(len(pts), links, 2), dtype=int)
-    for a in arcs:
+    solution = np.zeros(shape=(len(arcs)+1, links, 2), dtype=int)
+    for a in config_arcs:
         if x[a].x > 0.5:
             print(f"x{a}={x[a].x}")
             i, j, x1, y1, x2, y2 = a
             solution[i, links-j-1, 0] = x1
             solution[i, links-j-1, 1] = y1
+            solution[i+1, links-j-1, 0] = x2
+            solution[i+1, links-j-1, 1] = y2
 
-    print(solution)
-
-    for i in pts:
+    for i in arcs:
         if z[i].x > 0.5:
             print(f"z{i}={z[i].x}")
 
