@@ -619,7 +619,11 @@ def unit_tests():
 
 if __name__ == "__main__":
     links = 8
+    max_mip_pts = 50
     n = [1, 2, 4, 8, 16, 32, 64, 128][links-1]
+    solution = load_submission("submission-2599-101-(0, 65948)-Jan17-0030.csv")
+    # solution = np.empty(shape=(0, links, 2), dtype=int)
+    # solution = np.array([INITIAL_CONFIG], dtype=int)
 
     solution_xy = xy_path(n)
     solution_xy = solve_lkh_xy(solution_xy, n=n)
@@ -627,26 +631,27 @@ if __name__ == "__main__":
         print(f"{i}: {xy}")
 
     solution_pieces = []
-    start = 0
-    for j in range(4):
+    start = len(solution) - 1
+    while start < len(solution_xy) - 1:
+        print(i, start, len(solution_xy), solution_xy[i])
         i = start + 1
-        while solution_xy[i] not in [(-n, -n), (-n, n), (n, -n), (n, n)]:
+        while solution_xy[i] not in [(-n, -n), (-n, n), (n, -n), (n, n)] and i - start < max_mip_pts and i < len(solution_xy) - 1:
             i += 1
         solution_pieces.append(solution_xy[start:i+1])
         start = i
-    solution_pieces.append(solution_xy[start:])
 
+    assert np.all(solution_pieces[0][0] == solution[-1].sum(axis=0)), f"solution_xy[0][0]:{solution_pieces[0][0]}\nsolution[-1].sum(axis=0):{solution[-1].sum(axis=0)}"
 
-    solution = np.empty(shape=(0, links, 2), dtype=int)
     for j, _ in enumerate(solution_pieces):
         print(f"MIP Solving solution piece {j+1} of {len(solution_pieces)}")
         print(f"{solution_pieces[j]}")
 
         piece_solution = config_mip(
                 solution_pieces[j],
+                save_model=False,
                 links=links,
-                start=(j == 0),
-                end=(j == len(solution_pieces)-1),
+                start_config=solution[-1],
+                end_config=INITIAL_CONFIG if (j == len(solution_pieces) - 1) else None,
             )
 
         if j > 0:
@@ -656,6 +661,8 @@ if __name__ == "__main__":
             solution,
             piece_solution,
         ])
+        print(f"Current solution size: {solution.shape}")
+        solution_to_submission(solution)
 
     print(solution)
     solution_to_submission(solution)

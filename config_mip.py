@@ -2,7 +2,7 @@ import gurobipy as gp
 import numpy as np
 from gurobipy import GRB, tuplelist
 
-from common import ARM_LENGTHS
+from common import ARM_LENGTHS, config_to_string
 
 
 def config_mip(
@@ -11,8 +11,8 @@ def config_mip(
     UB=None,
     linear_relaxation=False,
     save_model=True,
-    start=False,
-    end=False,
+    start_config=None,
+    end_config=None,
 ):
     print("\nRunning MIP to find configs:")
     print(f"\txy_solution size: {len(xy_solution)}")
@@ -21,16 +21,21 @@ def config_mip(
     print(f"UB={UB}")
     print(f"linear_relaxation={linear_relaxation}")
     print(f"save_model={save_model}")
-    print(f"start={start}")
-    print(f"end={end}")
+    print(f"start_config={config_to_string(start_config) if start_config is not None else ''}")
+    print(f"start_config_xy={start_config.sum(axis=0) if start_config is not None else ''}")
+    print(f"end_config={config_to_string(end_config) if end_config is not None else''}")
+    print(f"end_config={end_config.sum(axis=0) if end_config is not None else''}")
+    print(f"xy_solution[0]={xy_solution[0]}")
 
     print("Creating model...")
     m = gp.Model("configs")
 
+    print(f"Creating {len(xy_solution)} arcs tuplelist")
     arcs = tuplelist(
         range(len(xy_solution)-1)
     )
 
+    print(f"Creating config_arcs tuplelist")
     config_arcs = tuplelist(
         (i, j, x1, y1, x2, y2)
         for i in arcs
@@ -38,23 +43,24 @@ def config_mip(
         for x1 in range(-ARM_LENGTHS[j], ARM_LENGTHS[j] + 1)
         for y1 in range(-ARM_LENGTHS[j], ARM_LENGTHS[j] + 1)
         if max(abs(x1), abs(y1)) == ARM_LENGTHS[j]
-        for x2 in range(-ARM_LENGTHS[j], ARM_LENGTHS[j] + 1)
-        for y2 in range(-ARM_LENGTHS[j], ARM_LENGTHS[j] + 1)
-        if max(abs(x2), abs(y2)) == ARM_LENGTHS[j] and abs(x2 - x1) <= 1 and abs(y2 - y1) <= 1
+        for x2 in range(max(x1-1, -ARM_LENGTHS[j]), min(x1+2, ARM_LENGTHS[j]+1))
+        for y2 in range(max(y1-1, -ARM_LENGTHS[j]), min(y1+2, ARM_LENGTHS[j]+1))
+        if max(abs(x2), abs(y2)) == ARM_LENGTHS[j]
     )
 
     # Create x variables
-    print(f"\nCreating {len(config_arcs)} x arc variables...")
+    print(f"Creating {len(config_arcs)} x arc variables...")
 
-    x = m.addVars(config_arcs, vtype=GRB.BINARY, lb=0, ub=1, name="x")
-    z = m.addVars(arcs, vtype=GRB.SEMICONT, name="z")
+    x = m.addVars(config_arcs, vtype=GRB.BINARY, name="x")
+    z = m.addVars(arcs, vtype=GRB.CONTINUOUS, name="z")
 
-    print("Setting obj\n")
+    print("Setting obj")
     m.setObjective(
         z.sum("*"),
         GRB.MINIMIZE,
     )
 
+    print(f"Creating {len(arcs)} ConfigFrom_x constraints...")
     m.addConstrs(
         (
             (
@@ -70,6 +76,7 @@ def config_mip(
         "ConfigFrom_x",
     )
 
+    print(f"Creating {len(arcs)} ConfigFrom_y constraints...")
     m.addConstrs(
         (
             (
@@ -85,6 +92,7 @@ def config_mip(
         "ConfigFrom_y",
     )
 
+    print(f"Creating {len(arcs)} ConfigTo_x constraints...")
     m.addConstrs(
         (
             (
@@ -100,6 +108,7 @@ def config_mip(
         "ConfigTo_x",
     )
 
+    print(f"Creating {len(arcs)} ConfigTo_y constraints...")
     m.addConstrs(
         (
             (
@@ -115,6 +124,7 @@ def config_mip(
         "ConfigTo_y",
     )
 
+    print(f"Creating {len(arcs) * links} arcs constraints...")
     m.addConstrs(
         (
             x.sum(i, j, "*", "*", "*", "*") == 1
@@ -124,64 +134,77 @@ def config_mip(
         "SingleConfig",
     )
 
+    print(f"Creating {(len(arcs)-1) * links} FlowConservation_x constraints...")
     m.addConstrs(
         (
-            x.sum(i, j, "*", "*", x1, y1) == x.sum(i+1, j, x1, y1, "*", "*")
+            x.sum(i, j, "*", "*", x1, "*") == x.sum(i+1, j, x1, "*", "*", "*")
             for i in arcs[:-1]
             for j in range(links)
             for x1 in range(-ARM_LENGTHS[j], ARM_LENGTHS[j]+1)
-            for y1 in range(-ARM_LENGTHS[j], ARM_LENGTHS[j]+1)
         ),
-        "FlowConservation",
+        "FlowConservation_x",
     )
 
-    if start:
+    print(f"Creating {(len(arcs)-1) * links} FlowConservation_y constraints...")
+    m.addConstrs(
+        (
+            x.sum(i, j, "*", "*", "*", y1) == x.sum(i+1, j, "*", y1, "*", "*")
+            for i in arcs[:-1]
+            for j in range(links)
+            for y1 in range(-ARM_LENGTHS[j], ARM_LENGTHS[j]+1)
+        ),
+        "FlowConservation_y",
+    )
+
+    if start_config is not None:
+        print(f"Creating {links} Start0 constraints...")
         m.addConstrs(
             (
-                x.sum(arcs[0], j, ARM_LENGTHS[j] if j == links - 1 else -ARM_LENGTHS[j], 0, "*", "*") == 1
+                x.sum(arcs[0], j, start_config[links-j-1][0], start_config[links-j-1][1], "*", "*") == 1
                 for j in range(links)
             ),
             "Start0",
         )
-    if end:
+    if end_config is not None:
+        print(f"Creating {links} End0 constraints...")
         m.addConstrs(
             (
-                x.sum(arcs[-1], j, "*", "*", ARM_LENGTHS[j] if j == links - 1 else -ARM_LENGTHS[j], 0) == 1
+                x.sum(arcs[-1], j, "*", "*", end_config[links-j-1][0], end_config[links-j-1][1]) == 1
                 for j in range(links)
             ),
             "End0",
         )
 
+    print(f"Creating {len(arcs)} Costx constraints...")
     m.addConstrs(
         (
             (
                 gp.quicksum(
                     x.sum(i, j, x1, "*", x2, "*")
-                    for j in range(links)
                     for x1 in range(-ARM_LENGTHS[j], ARM_LENGTHS[j]+1)
-                    for x2 in range(-ARM_LENGTHS[j], ARM_LENGTHS[j]+1)
-                    if abs(x1-x2) == 1
+                    for x2 in range(max(x1-1, -ARM_LENGTHS[j]), min(x1+2, ARM_LENGTHS[j]+1))
                 )
                 <= z[i]
             )
             for i in arcs
+            for j in range(links)
         ),
         "Costx",
     )
 
+    print(f"Creating {len(arcs)} Costy constraints...")
     m.addConstrs(
         (
             (
                 gp.quicksum(
                     x.sum(i, j, "*", y1, "*", y2)
-                    for j in range(links)
                     for y1 in range(-ARM_LENGTHS[j], ARM_LENGTHS[j]+1)
-                    for y2 in range(-ARM_LENGTHS[j], ARM_LENGTHS[j]+1)
-                    if abs(y1 - y2) == 1
+                    for y2 in range(max(y1 - 1, -ARM_LENGTHS[j]), min(y1 + 2, ARM_LENGTHS[j] + 1))
                 )
                 <= z[i]
             )
             for i in arcs
+            for j in range(links)
         ),
         "Costy",
     )
